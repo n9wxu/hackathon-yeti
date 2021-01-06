@@ -97,6 +97,8 @@ set(
     "${esp_idf_dir}/components/vfs/include"
     "${esp_idf_dir}/components/esp_ringbuf/include/"
     "${extra_components_dir}/freertos/include"
+    "${extra_components_dir}/esp32-camera/driver/include"
+    "${extra_components_dir}/esp32-camera/conversions/include"
     "${esp_idf_dir}/components/mbedtls/port/include"
     "${esp_idf_dir}/components/xtensa/esp32/include/xtensa"
     "${esp_idf_dir}/components/xtensa/esp32/include"
@@ -538,14 +540,14 @@ get_filename_component(
 
 idf_build_component(${ABS_EXTRA_COMPONENT_DIRS})
 
+endif()
+
 get_filename_component(
-    ABS_NW_EXTRA_COMPONENT_DIRS
-    "${extra_components_dir}/esp32_camera" ABSOLUTE
+    ABS_EXTRA_COMPONENT_DIRS
+    "${extra_components_dir}/esp32-camera" ABSOLUTE
 )
 
 idf_build_component(${ABS_EXTRA_COMPONENT_DIRS})
-
-endif()
 
 idf_build_process(esp32
                     SDKCONFIG ${CMAKE_BINARY_DIR}/sdkconfig

@@ -116,7 +116,7 @@
 /**
  * @brief Size of the network buffer for MQTT packets.
  */
-#define democonfigNETWORK_BUFFER_SIZE    ( 10240U )
+#define democonfigNETWORK_BUFFER_SIZE    ( 1024U )
 
 /**
  * @brief The maximum number of times to run the subscribe publish loop in the

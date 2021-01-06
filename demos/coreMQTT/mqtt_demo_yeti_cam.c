@@ -60,6 +60,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "esp_camera.h"
+
 /* MQTT library includes. */
 #include "core_mqtt.h"
 
@@ -952,17 +954,6 @@ static BaseType_t prvCreateMQTTConnectionWithBroker( MQTTContext_t * pxMQTTConte
 static void prvUpdateSubAckStatus( MQTTPacketInfo_t * pxPacketInfo );
 
 /**
- * @brief Subscribes to the topic as specified in mqttexampleTOPIC at the top of
- * this file. In the case of a Subscribe ACK failure, then subscription is
- * retried using an exponential backoff strategy with jitter.
- *
- * @param[in] pxMQTTContext MQTT context pointer.
- *
- * @return pdFAIL on failure; pdPASS on successful SUBSCRIBE request.
- */
-static BaseType_t prvMQTTSubscribeWithBackoffRetries( MQTTContext_t * pxMQTTContext );
-
-/**
  * @brief Publishes a message jpegimageHEX on mqttexampleTOPIC topic.
  *
  * @param[in] pxMQTTContext MQTT context pointer.
@@ -1030,7 +1021,7 @@ static void prvEventCallback( MQTTContext_t * pxMQTTContext,
  *
  * @return The return status from call to #MQTT_ProcessLoop API.
  */
-static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
+static MQTTStatus_t prvWaitForAck( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType );
 
 /*-----------------------------------------------------------*/
@@ -1076,7 +1067,7 @@ static uint16_t usUnsubscribePacketIdentifier;
  * A single variable suffices as this demo uses single task and requests one operation
  * (of PUBLISH, SUBSCRIBE, UNSUBSCRIBE) at a time before expecting response from
  * the broker. Hence it is not possible to receive multiple packets of type PUBLISH,
- * SUBACK, and UNSUBACK in a single call of #prvWaitForPacket.
+ * SUBACK, and UNSUBACK in a single call of #prvWaitForAck.
  * For a multi task application, consider a different method to wait for the packet, if needed.
  */
 static uint16_t usPacketTypeReceived = 0U;
@@ -1181,16 +1172,6 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
         xDemoStatus = prvCreateMQTTConnectionWithBroker( &xMQTTContext, &xNetworkContext );
     }
 
-    /**************************** Subscribe. ******************************/
-
-    if( xDemoStatus == pdPASS )
-    {
-        /* If server rejected the subscription request, attempt to resubscribe to topic.
-         * Attempts are made according to the exponential backoff retry strategy
-         * implemented in backoff_algorithm. */
-        xDemoStatus = prvMQTTSubscribeWithBackoffRetries( &xMQTTContext );
-    }
-
     /**************************** Publish jpeg frames loop. ******************************/
 
     /* QoS1 should be sufficient because we don't care if subscribers of the topic receive the image. */
@@ -1212,13 +1193,8 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
 
         if( xDemoStatus == pdPASS )
         {
-            /* Process incoming publish echo, since application subscribed to the same
-             * topic, the broker will send publish message back to the application.
-             * #prvWaitForPacket will try to receive an incoming PUBLISH packet from broker.
-             * Please note that PUBACK for the outgoing PUBLISH may also be received before
-             * receiving an incoming PUBLISH. */
-            LogInfo( ( "Attempt to receive publish message from broker." ) );
-            xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
+            /* The PUBACK for the outgoing PUBLISH will be received here. */
+            xMQTTStatus = prvWaitForAck( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
 
             if( xMQTTStatus != MQTTSuccess )
             {
@@ -1242,7 +1218,7 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
     if( xDemoStatus == pdPASS )
     {
         /* Process incoming UNSUBACK packet from the broker. */
-        xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_UNSUBACK );
+        xMQTTStatus = prvWaitForAck( &xMQTTContext, MQTT_PACKET_TYPE_UNSUBACK );
 
         if( xMQTTStatus != MQTTSuccess )
         {
@@ -1482,107 +1458,6 @@ static void prvUpdateSubAckStatus( MQTTPacketInfo_t * pxPacketInfo )
 }
 /*-----------------------------------------------------------*/
 
-static BaseType_t prvMQTTSubscribeWithBackoffRetries( MQTTContext_t * pxMQTTContext )
-{
-    MQTTStatus_t xResult = MQTTSuccess;
-    BackoffAlgorithmContext_t xRetryParams;
-    BaseType_t xBackoffStatus = pdFAIL;
-    MQTTSubscribeInfo_t xMQTTSubscription[ mqttexampleTOPIC_COUNT ];
-    BaseType_t xFailedSubscribeToTopic = pdFALSE;
-    uint32_t ulTopicCount = 0U;
-    BaseType_t xStatus = pdFAIL;
-
-    /* Some fields not used by this demo so start with everything at 0. */
-    ( void ) memset( ( void * ) &xMQTTSubscription, 0x00, sizeof( xMQTTSubscription ) );
-
-    /* Get a unique packet id. */
-    usSubscribePacketIdentifier = MQTT_GetPacketId( pxMQTTContext );
-
-    /* Subscribe to the mqttexampleTOPIC topic filter. This example subscribes to
-     * only one topic and uses QoS1. */
-    xMQTTSubscription[ 0 ].qos = MQTTQoS1;
-    xMQTTSubscription[ 0 ].pTopicFilter = mqttexampleTOPIC;
-    xMQTTSubscription[ 0 ].topicFilterLength = ( uint16_t ) strlen( mqttexampleTOPIC );
-
-    /* Initialize retry attempts and interval. */
-    BackoffAlgorithm_InitializeParams( &xRetryParams,
-                                       RETRY_BACKOFF_BASE_MS,
-                                       RETRY_MAX_BACKOFF_DELAY_MS,
-                                       RETRY_MAX_ATTEMPTS );
-
-    do
-    {
-        /* The client is now connected to the broker. Subscribe to the topic
-         * as specified in mqttexampleTOPIC at the top of this file by sending a
-         * subscribe packet then waiting for a subscribe acknowledgment (SUBACK).
-         * This client will then publish to the same topic it subscribed to, so it
-         * will expect all the messages it sends to the broker to be sent back to it
-         * from the broker. This demo uses QOS0 in Subscribe, therefore, the Publish
-         * messages received from the broker will have QOS0. */
-        LogInfo( ( "Attempt to subscribe to the MQTT topic %s.", mqttexampleTOPIC ) );
-        xResult = MQTT_Subscribe( pxMQTTContext,
-                                  xMQTTSubscription,
-                                  sizeof( xMQTTSubscription ) / sizeof( MQTTSubscribeInfo_t ),
-                                  usSubscribePacketIdentifier );
-
-        if( xResult != MQTTSuccess )
-        {
-            LogError( ( "Failed to SUBSCRIBE to MQTT topic %s. Error=%s",
-                        mqttexampleTOPIC, MQTT_Status_strerror( xResult ) ) );
-        }
-        else
-        {
-            xStatus = pdPASS;
-            LogInfo( ( "SUBSCRIBE sent for topic %s to broker.", mqttexampleTOPIC ) );
-
-            /* Process incoming packet from the broker. After sending the subscribe, the
-             * client may receive a publish before it receives a subscribe ack. Therefore,
-             * call generic incoming packet processing function. Since this demo is
-             * subscribing to the topic to which no one is publishing, probability of
-             * receiving Publish message before subscribe ack is zero; but application
-             * must be ready to receive any packet.  This demo uses the generic packet
-             * processing function everywhere to highlight this fact. */
-            xResult = prvWaitForPacket( pxMQTTContext, MQTT_PACKET_TYPE_SUBACK );
-
-            if( xResult != MQTTSuccess )
-            {
-                xStatus = pdFAIL;
-            }
-        }
-
-        if( xStatus == pdPASS )
-        {
-            /* Reset flag before checking suback responses. */
-            xFailedSubscribeToTopic = pdFALSE;
-
-            /* Check if recent subscription request has been rejected. #xTopicFilterContext is updated
-             * in the event callback to reflect the status of the SUBACK sent by the broker. It represents
-             * either the QoS level granted by the server upon subscription, or acknowledgement of
-             * server rejection of the subscription request. */
-            for( ulTopicCount = 0; ulTopicCount < mqttexampleTOPIC_COUNT; ulTopicCount++ )
-            {
-                if( xTopicFilterContext[ ulTopicCount ].xSubAckStatus == MQTTSubAckFailure )
-                {
-                    xFailedSubscribeToTopic = pdTRUE;
-
-                    /* As the subscribe attempt failed, we will retry the connection after an
-                     * exponential backoff with jitter delay. */
-
-                    /* Retry subscribe after exponential back-off. */
-                    LogWarn( ( "Server rejected subscription request. Attempting to re-subscribe to topic %s.",
-                               xTopicFilterContext[ ulTopicCount ].pcTopicFilter ) );
-
-                    xBackoffStatus = prvBackoffForRetry( &xRetryParams );
-                    break;
-                }
-            }
-        }
-    } while( ( xFailedSubscribeToTopic == pdTRUE ) && ( xBackoffStatus == pdPASS ) );
-
-    return xStatus;
-}
-/*-----------------------------------------------------------*/
-
 static BaseType_t prvMQTTPublishToTopic( MQTTContext_t * pxMQTTContext,
                                          const MQTTPublishInfo_t * pxMQTTPublishInfo )
 {
@@ -1779,7 +1654,7 @@ static uint32_t prvGetTimeMs( void )
 
 /*-----------------------------------------------------------*/
 
-static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
+static MQTTStatus_t prvWaitForAck( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType )
 {
     uint8_t ucCount = 0U;
@@ -1788,21 +1663,13 @@ static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
     /* Reset the packet type received. */
     usPacketTypeReceived = 0U;
 
-    while( ( usPacketTypeReceived != usPacketType ) &&
-           ( ucCount++ < MQTT_PROCESS_LOOP_PACKET_WAIT_COUNT_MAX ) &&
-           ( xMQTTStatus == MQTTSuccess ) )
-    {
-        /* Event callback will set #usPacketTypeReceived when receiving appropriate packet. This
-         * will wait for at most mqttexamplePROCESS_LOOP_TIMEOUT_MS. */
-        xMQTTStatus = MQTT_ProcessLoop( pxMQTTContext, mqttexamplePROCESS_LOOP_TIMEOUT_MS );
-    }
+    /* Event callback will set #usPacketTypeReceived when receiving appropriate packet. This
+     * will wait for at most mqttexamplePROCESS_LOOP_TIMEOUT_MS. */
+    xMQTTStatus = MQTT_ProcessLoop( pxMQTTContext, mqttexamplePROCESS_LOOP_TIMEOUT_MS );
 
-    if( ( xMQTTStatus != MQTTSuccess ) || ( usPacketTypeReceived != usPacketType ) )
+    if( xMQTTStatus != MQTTSuccess )
     {
-        LogError( ( "MQTT_ProcessLoop failed to receive packet: Packet type=%02X, LoopDuration=%u, Status=%s",
-                    usPacketType,
-                    ( mqttexamplePROCESS_LOOP_TIMEOUT_MS * ucCount ),
-                    MQTT_Status_strerror( xMQTTStatus ) ) );
+        LogError( ( "MQTT_ProcessLoop failed to receive acknowledgement." ) );
     }
 
     return xMQTTStatus;
