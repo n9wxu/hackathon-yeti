@@ -1206,7 +1206,7 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
     {
         LogInfo( ( "Publish jpeg image to the MQTT topic %s.", mqttexampleTOPIC ) );
         xMQTTPublishInfo.pPayload = jpegimageHEX;
-        xMQTTPublishInfo.payloadLength = strlen( jpegimageHEX );
+        xMQTTPublishInfo.payloadLength = sizeof( jpegimageHEX ) - 1;
 
         xDemoStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
 

@@ -42,7 +42,7 @@
 
 /* Logging configuration for the Demo. */
 #ifndef LIBRARY_LOG_NAME
-    #define LIBRARY_LOG_NAME    "MQTT_MutualAuth_Demo"
+    #define LIBRARY_LOG_NAME    "MQTT_YetiCam_Demo"
 #endif
 
 #ifndef LIBRARY_LOG_LEVEL
@@ -116,7 +116,7 @@
 /**
  * @brief Size of the network buffer for MQTT packets.
  */
-#define democonfigNETWORK_BUFFER_SIZE    ( 1024U )
+#define democonfigNETWORK_BUFFER_SIZE    ( 10240U )
 
 /**
  * @brief The maximum number of times to run the subscribe publish loop in the
