@@ -1021,7 +1021,7 @@ static void prvEventCallback( MQTTContext_t * pxMQTTContext,
  *
  * @return The return status from call to #MQTT_ProcessLoop API.
  */
-static MQTTStatus_t prvWaitForAck( MQTTContext_t * pxMQTTContext,
+static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType );
 
 /*-----------------------------------------------------------*/
@@ -1067,7 +1067,7 @@ static uint16_t usUnsubscribePacketIdentifier;
  * A single variable suffices as this demo uses single task and requests one operation
  * (of PUBLISH, SUBSCRIBE, UNSUBSCRIBE) at a time before expecting response from
  * the broker. Hence it is not possible to receive multiple packets of type PUBLISH,
- * SUBACK, and UNSUBACK in a single call of #prvWaitForAck.
+ * SUBACK, and UNSUBACK in a single call of #prvWaitForPacket.
  * For a multi task application, consider a different method to wait for the packet, if needed.
  */
 static uint16_t usPacketTypeReceived = 0U;
@@ -1194,7 +1194,7 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
         if( xDemoStatus == pdPASS )
         {
             /* The PUBACK for the outgoing PUBLISH will be received here. */
-            xMQTTStatus = prvWaitForAck( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
+            xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
 
             if( xMQTTStatus != MQTTSuccess )
             {
@@ -1218,7 +1218,7 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
     if( xDemoStatus == pdPASS )
     {
         /* Process incoming UNSUBACK packet from the broker. */
-        xMQTTStatus = prvWaitForAck( &xMQTTContext, MQTT_PACKET_TYPE_UNSUBACK );
+        xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_UNSUBACK );
 
         if( xMQTTStatus != MQTTSuccess )
         {
@@ -1654,7 +1654,7 @@ static uint32_t prvGetTimeMs( void )
 
 /*-----------------------------------------------------------*/
 
-static MQTTStatus_t prvWaitForAck( MQTTContext_t * pxMQTTContext,
+static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType )
 {
     uint8_t ucCount = 0U;
