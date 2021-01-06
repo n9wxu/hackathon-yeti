@@ -537,6 +537,14 @@ get_filename_component(
 )
 
 idf_build_component(${ABS_EXTRA_COMPONENT_DIRS})
+
+get_filename_component(
+    ABS_NW_EXTRA_COMPONENT_DIRS
+    "${extra_components_dir}/esp32_camera" ABSOLUTE
+)
+
+idf_build_component(${ABS_EXTRA_COMPONENT_DIRS})
+
 endif()
 
 idf_build_process(esp32
