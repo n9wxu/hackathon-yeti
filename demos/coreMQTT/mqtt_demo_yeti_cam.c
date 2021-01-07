@@ -1245,6 +1245,12 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
     xMQTTPublishInfo.pTopicName = mqttexampleTOPIC;
     xMQTTPublishInfo.topicNameLength = ( uint16_t ) strlen( mqttexampleTOPIC );
 
+    if(init_camera() != ESP_OK)
+    {
+        xDemoStatus = pdFAIL;
+        LogInfo(("Camera init failed"));
+    }
+
     /* Publish messages with QoS1, send and process Keep alive messages. */
     for( ulPublishCount = 0;
          ( ( xDemoStatus == pdPASS ) && ( ulPublishCount < ulMaxPublishCount ) );
@@ -1252,9 +1258,16 @@ int RunCoreMqttYetiCamDemo( bool awsIotMqttMode,
     {
         camera_fb_t *pic = esp_camera_fb_get();
 
-        LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", pic->len, mqttexampleTOPIC ) );
-        xMQTTPublishInfo.pPayload = pic->buf;
-        xMQTTPublishInfo.payloadLength = pic->len;
+        if(pic)
+        {
+            LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", pic->len, mqttexampleTOPIC ) );
+            xMQTTPublishInfo.pPayload = pic->buf;
+            xMQTTPublishInfo.payloadLength = pic->len;
+        }
+        else
+        {
+            LogInfo( ("no picture taken"));
+        }
 
         xDemoStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
 
