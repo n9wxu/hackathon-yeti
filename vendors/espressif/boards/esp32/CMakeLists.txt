@@ -438,6 +438,12 @@ target_link_libraries(
         AFR::common_io
 )
 
+target_link_libraries(
+    ${IDF_PROJECT_EXECUTABLE}
+    PUBLIC
+        idf::esp32-camera
+)
+
 if(AFR_METADATA_MODE)
     return()
 endif()
@@ -592,6 +598,7 @@ target_compile_options(
     INTERFACE
     ${idf_compile_options}
 )
+
 
 idf_build_set_property(PROJECT_NAME ${IDF_PROJECT_EXECUTABLE})
 idf_build_set_property(EXECUTABLE_NAME ${IDF_PROJECT_EXECUTABLE})
