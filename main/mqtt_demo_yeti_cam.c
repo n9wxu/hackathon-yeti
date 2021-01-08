@@ -693,7 +693,6 @@ void wakeUpFromMotionDetection( void )
         return;
     }
     register_gpio_negedge_event();
-    connect_wifi();
     imageProcessLoop();
 }
 
@@ -737,7 +736,7 @@ typedef struct imageBuffer {
     size_t len;
 } imageFrame_t;
 
-#define NUM_IMAGE_FRAMES 1
+#define NUM_IMAGE_FRAMES 10
 
 static QueueHandle_t xImageFramesQueue = NULL;
 
@@ -763,9 +762,18 @@ static void publishImagesRoutine( void * pParameters )
     xMQTTPublishInfo.pTopicName = mqttexampleTOPIC;
     xMQTTPublishInfo.topicNameLength = ( uint16_t ) strlen( mqttexampleTOPIC );
 
+    connect_wifi();
+
+    /* Set the entry time of the demo application. This entry time will be used
+    * to calculate relative time elapsed in the execution of the demo application,
+    * by the timer utility function that is provided to the MQTT library.
+    */
+    ulGlobalEntryTimeMs = prvGetTimeMs();
+
     for( ; ; )
     {
         /********************************** Connect. *****************************************/
+
         if(!xIsConnectionEstablished) {
             /* Attempt to establish TLS session with MQTT broker. If connection fails,
             * retry after a timeout. Timeout value will be exponentially increased until
@@ -794,8 +802,10 @@ static void publishImagesRoutine( void * pParameters )
         }
 
         /************************* Send image over MQTT. ***************************************/
-        /* If there are no requests in the dispatch queue, try again. */
-        if( xQueueReceive( xImageFramesQueue,
+
+        /* If there are no requests in the dispatch queue, try again. Peek first and consume only
+         * when the image has been sent over the network.  */
+        if( xQueuePeek( xImageFramesQueue,
                            &imageFrame,
                            portMAX_DELAY ) == pdFALSE )
         {
@@ -806,12 +816,6 @@ static void publishImagesRoutine( void * pParameters )
                 break;
             }
         }
-
-        /* Set the entry time of the demo application. This entry time will be used
-        * to calculate relative time elapsed in the execution of the demo application,
-        * by the timer utility function that is provided to the MQTT library.
-        */
-        ulGlobalEntryTimeMs = prvGetTimeMs();
 
         if(xIsConnectionEstablished) {
             LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", imageFrame.len, mqttexampleTOPIC ) );
@@ -840,6 +844,10 @@ static void publishImagesRoutine( void * pParameters )
         }
 
         free(imageFrame.buf);
+
+        configASSERT( xQueueReceive( xImageFramesQueue,
+                        &imageFrame,
+                        portMAX_DELAY ) == pdTRUE);
     }
 
     /* Terminating condition is when no more motion has been detected and
@@ -909,8 +917,10 @@ static void imageProcessLoop()
         {
             buffer = (uint8_t*)malloc(fb->len);
             if(buffer == NULL) {
+                LogError(("Failed to malloc %d bytes for image frame.", fb->len));
                 vTaskDelay(pdMS_TO_TICKS(250U));
             } else {
+                LogInfo(("Sending image of size %d bytes to queue.", fb->len));
                 imageFrame.buf = buffer;
                 memcpy(imageFrame.buf, fb->buf, fb->len);
                 imageFrame.len = fb->len;
@@ -926,6 +936,13 @@ static void imageProcessLoop()
 
         /* I guess a Yeti isn't that fast :) */
         vTaskDelay(pdMS_TO_TICKS( 250U ));
+    }
+
+    /* The ESP shouldn't go to sleep until all the images are sent or saved.
+     * If the queue is empty, we don't expect it to fill up again. */
+    imageFrame_t imageFrameFiller;
+    while(xQueuePeek(xImageFramesQueue, &imageFrameFiller, 0) == pdTRUE) {
+        vTaskDelay(pdMS_TO_TICKS( 1000U ));
     }
 }
 /*-----------------------------------------------------------*/
