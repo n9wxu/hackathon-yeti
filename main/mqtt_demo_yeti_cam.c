@@ -459,6 +459,7 @@ static MQTTFixedBuffer_t xBuffer =
 };
 
 static UBaseType_t motionDetected = pdFALSE;
+static UBaseType_t deepSleep = pdTRUE;
 
 /*-----------------------------------------------------------*/
 
@@ -546,6 +547,13 @@ static void on_wifi_disconnect( void * arg,
                                 void * event_data )
 {
     ESP_LOGI( WIFI_TAG, "Wi-Fi disconnected..." );
+    if(deepSleep != pdTRUE) {
+        esp_err_t err = esp_wifi_connect();
+        if (err == ESP_ERR_WIFI_NOT_STARTED) {
+            return;
+        }
+        ESP_ERROR_CHECK(err);
+    }
 }
 
 static void on_wifi_connect( void * esp_netif,
@@ -703,6 +711,8 @@ void register_gpio_negedge_event( void )
 
 void wakeUpFromMotionDetection( void )
 {
+    deepSleep = pdFALSE;
+
     /* Initialize the camera before configuring GPIO because
      * the camera installs the GPIO service first. */
     if( init_camera() != ESP_OK )
@@ -748,6 +758,7 @@ void app_main( void )
     esp_sleep_enable_ext0_wakeup( PIR_SENSOR_PORT, 1 );
 
     LogInfo( ( "Entering deep sleep." ) );
+    deepSleep = pdTRUE;
     esp_wifi_stop();
     esp_deep_sleep_start();
 }
