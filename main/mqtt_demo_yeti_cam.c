@@ -54,7 +54,7 @@
 #include "mqtt_demo_mutual_auth_config.h"
 
 /* Include common demo header. */
-//#include "aws_demo.h"
+/*#include "aws_demo.h" */
 
 /* Kernel includes. */
 #include "freertos/FreeRTOS.h"
@@ -104,7 +104,7 @@
 #include "aws_clientcredential_keys.h"
 
 /* Include header for root CA certificates. */
-//#include "iot_default_root_certificates.h"
+/*#include "iot_default_root_certificates.h" */
 
 /*------------- Demo configurations -------------------------*/
 
@@ -200,7 +200,7 @@ static const char tlsATS1_ROOT_CERTIFICATE_PEM[] =
  * The topic name starts with the client identifier to ensure that each demo
  * interacts with a unique topic name.
  */
-#define mqttexampleTOPIC                      democonfigCLIENT_IDENTIFIER "/yeti/pics"
+#define mqttexampleTOPIC                                  democonfigCLIENT_IDENTIFIER "/yeti/pics"
 
 /**
  * @brief The number of topic filters to subscribe.
@@ -259,23 +259,23 @@ static const char tlsATS1_ROOT_CERTIFICATE_PEM[] =
  */
 #define MILLISECONDS_PER_TICK                             ( MILLISECONDS_PER_SECOND / configTICK_RATE_HZ )
 
-#define GOT_IPV4_BIT BIT(0)
-#define GOT_IPV6_BIT BIT(1)
+#define GOT_IPV4_BIT                                      BIT( 0 )
+#define GOT_IPV6_BIT                                      BIT( 1 )
 
-#define MOUNT_POINT "/sdcard"
-#define SPI_DMA_CHAN    1
+#define MOUNT_POINT                                       "/sdcard"
+#define SPI_DMA_CHAN                                      1
 
-#define USE_SPI_MODE 1
+#define USE_SPI_MODE                                      1
 
 #ifdef USE_SPI_MODE
-    // Pin mapping when using SPI mode.
-    // With this mapping, SD card can be used both in SPI and 1-line SD mode.
-    // Note that a pull-up on CS line is required in SD mode.
-    #define PIN_NUM_MISO 2
-    #define PIN_NUM_MOSI 15
-    #define PIN_NUM_CLK  14
-    #define PIN_NUM_CS   13
-#endif //USE_SPI_MODE
+    /* Pin mapping when using SPI mode. */
+    /* With this mapping, SD card can be used both in SPI and 1-line SD mode. */
+    /* Note that a pull-up on CS line is required in SD mode. */
+    #define PIN_NUM_MISO    2
+    #define PIN_NUM_MOSI    15
+    #define PIN_NUM_CLK     14
+    #define PIN_NUM_CS      13
+#endif /*USE_SPI_MODE */
 
 /*-----------------------------------------------------------*/
 
@@ -462,236 +462,255 @@ static UBaseType_t motionDetected = pdFALSE;
 
 /*-----------------------------------------------------------*/
 
-#define EEPROM_SIZE 1
+#define EEPROM_SIZE      1
 
-#define CAM_PIN_PWDN 32
-#define CAM_PIN_RESET -1 //software reset will be performed
-#define CAM_PIN_XCLK 0
-#define CAM_PIN_SIOD 26
-#define CAM_PIN_SIOC 27
+#define CAM_PIN_PWDN     32
+#define CAM_PIN_RESET    -1 /*software reset will be performed */
+#define CAM_PIN_XCLK     0
+#define CAM_PIN_SIOD     26
+#define CAM_PIN_SIOC     27
 
-#define CAM_PIN_D7 35
-#define CAM_PIN_D6 34
-#define CAM_PIN_D5 39
-#define CAM_PIN_D4 36
-#define CAM_PIN_D3 21
-#define CAM_PIN_D2 19
-#define CAM_PIN_D1 18
-#define CAM_PIN_D0 5
-#define CAM_PIN_VSYNC 25
-#define CAM_PIN_HREF 23
-#define CAM_PIN_PCLK 22
+#define CAM_PIN_D7       35
+#define CAM_PIN_D6       34
+#define CAM_PIN_D5       39
+#define CAM_PIN_D4       36
+#define CAM_PIN_D3       21
+#define CAM_PIN_D2       19
+#define CAM_PIN_D1       18
+#define CAM_PIN_D0       5
+#define CAM_PIN_VSYNC    25
+#define CAM_PIN_HREF     23
+#define CAM_PIN_PCLK     22
 
-static camera_config_t camera_config = {
-    .pin_pwdn = CAM_PIN_PWDN,
-    .pin_reset = CAM_PIN_RESET,
-    .pin_xclk = CAM_PIN_XCLK,
+static camera_config_t camera_config =
+{
+    .pin_pwdn     = CAM_PIN_PWDN,
+    .pin_reset    = CAM_PIN_RESET,
+    .pin_xclk     = CAM_PIN_XCLK,
     .pin_sscb_sda = CAM_PIN_SIOD,
     .pin_sscb_scl = CAM_PIN_SIOC,
 
-    .pin_d7 = CAM_PIN_D7,
-    .pin_d6 = CAM_PIN_D6,
-    .pin_d5 = CAM_PIN_D5,
-    .pin_d4 = CAM_PIN_D4,
-    .pin_d3 = CAM_PIN_D3,
-    .pin_d2 = CAM_PIN_D2,
-    .pin_d1 = CAM_PIN_D1,
-    .pin_d0 = CAM_PIN_D0,
-    .pin_vsync = CAM_PIN_VSYNC,
-    .pin_href = CAM_PIN_HREF,
-    .pin_pclk = CAM_PIN_PCLK,
+    .pin_d7       = CAM_PIN_D7,
+    .pin_d6       = CAM_PIN_D6,
+    .pin_d5       = CAM_PIN_D5,
+    .pin_d4       = CAM_PIN_D4,
+    .pin_d3       = CAM_PIN_D3,
+    .pin_d2       = CAM_PIN_D2,
+    .pin_d1       = CAM_PIN_D1,
+    .pin_d0       = CAM_PIN_D0,
+    .pin_vsync    = CAM_PIN_VSYNC,
+    .pin_href     = CAM_PIN_HREF,
+    .pin_pclk     = CAM_PIN_PCLK,
 
-    //XCLK 20MHz or 10MHz for OV2640 double FPS (Experimental)
+    /*XCLK 20MHz or 10MHz for OV2640 double FPS (Experimental) */
     .xclk_freq_hz = 20000000,
-    .ledc_timer = LEDC_TIMER_0,
+    .ledc_timer   = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
-    .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_VGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .pixel_format = PIXFORMAT_JPEG, /*YUV422,GRAYSCALE,RGB565,JPEG */
+    .frame_size   = FRAMESIZE_VGA,  /*QQVGA-UXGA Do not use sizes above QVGA when not JPEG */
 
-    .jpeg_quality = 12, //0-63 lower number means higher quality
-    .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
+    .jpeg_quality = 12,             /*0-63 lower number means higher quality */
+    .fb_count     = 1               /*if more than one, i2s runs in continuous mode. Use only with JPEG */
 };
 
 static esp_err_t init_camera()
 {
-    //initialize the camera
+    /*initialize the camera */
 
-    esp_err_t err = esp_camera_init(&camera_config);
-    if (err != ESP_OK)
+    esp_err_t err = esp_camera_init( &camera_config );
+
+    if( err != ESP_OK )
     {
-        LogError(("Camera Init Failed"));
+        LogError( ( "Camera Init Failed" ) );
         return err;
     }
 
     return ESP_OK;
 }
 
-static wifi_config_t wifi_config = {
-    .sta = {
-        .ssid = CONFIG_EXAMPLE_WIFI_SSID,
+static wifi_config_t wifi_config =
+{
+    .sta          =
+    {
+        .ssid     = CONFIG_EXAMPLE_WIFI_SSID,
         .password = CONFIG_EXAMPLE_WIFI_PASSWORD,
     },
 };
 
-#define WIFI_TAG "wifi"
+#define WIFI_TAG    "wifi"
 
-static void on_wifi_disconnect(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
+static void on_wifi_disconnect( void * arg,
+                                esp_event_base_t event_base,
+                                int32_t event_id,
+                                void * event_data )
 {
-    ESP_LOGI(WIFI_TAG, "Wi-Fi disconnected...");
+    ESP_LOGI( WIFI_TAG, "Wi-Fi disconnected..." );
 }
 
-static void on_wifi_connect(void *esp_netif, esp_event_base_t event_base,
-                            int32_t event_id, void *event_data)
+static void on_wifi_connect( void * esp_netif,
+                             esp_event_base_t event_base,
+                             int32_t event_id,
+                             void * event_data )
 {
-    esp_netif_create_ip6_linklocal(esp_netif);
+    esp_netif_create_ip6_linklocal( esp_netif );
 }
 
 static EventGroupHandle_t s_connect_event_group;
 
-static void on_got_ip(void *arg, esp_event_base_t event_base,
-                      int32_t event_id, void *event_data)
+static void on_got_ip( void * arg,
+                       esp_event_base_t event_base,
+                       int32_t event_id,
+                       void * event_data )
 {
-    ESP_LOGI(WIFI_TAG, "Got IP event!");
-    xEventGroupSetBits(s_connect_event_group, GOT_IPV4_BIT);
+    ESP_LOGI( WIFI_TAG, "Got IP event!" );
+    xEventGroupSetBits( s_connect_event_group, GOT_IPV4_BIT );
 }
 
-static void on_got_ipv6(void *arg, esp_event_base_t event_base,
-                        int32_t event_id, void *event_data)
+static void on_got_ipv6( void * arg,
+                         esp_event_base_t event_base,
+                         int32_t event_id,
+                         void * event_data )
 {
-    ESP_LOGI(WIFI_TAG, "Got IPv6 event!");
-    xEventGroupSetBits(s_connect_event_group, GOT_IPV6_BIT);
+    ESP_LOGI( WIFI_TAG, "Got IPv6 event!" );
+    xEventGroupSetBits( s_connect_event_group, GOT_IPV6_BIT );
 }
 
 static void connect_wifi()
 {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    ESP_ERROR_CHECK( esp_wifi_init( &cfg ) );
 
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_WIFI_STA();
 
-    esp_netif_t *netif = esp_netif_new(&netif_config);
-    assert(netif);
+    esp_netif_t * netif = esp_netif_new( &netif_config );
+    assert( netif );
 
-    esp_netif_attach_wifi_station(netif);
+    esp_netif_attach_wifi_station( netif );
     esp_wifi_set_default_wifi_sta_handlers();
 
     s_connect_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &on_wifi_disconnect, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_got_ip, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &on_wifi_connect, netif));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_GOT_IP6, &on_got_ipv6, NULL));
+    ESP_ERROR_CHECK( esp_event_handler_register( WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &on_wifi_disconnect, NULL ) );
+    ESP_ERROR_CHECK( esp_event_handler_register( IP_EVENT, IP_EVENT_STA_GOT_IP, &on_got_ip, NULL ) );
+    ESP_ERROR_CHECK( esp_event_handler_register( WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &on_wifi_connect, netif ) );
+    ESP_ERROR_CHECK( esp_event_handler_register( IP_EVENT, IP_EVENT_GOT_IP6, &on_got_ipv6, NULL ) );
 
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_LOGI("wifi", "Connecting to %s...", wifi_config.sta.ssid);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    ESP_ERROR_CHECK( esp_wifi_set_storage( WIFI_STORAGE_RAM ) );
+    ESP_LOGI( "wifi", "Connecting to %s...", wifi_config.sta.ssid );
+    ESP_ERROR_CHECK( esp_wifi_set_mode( WIFI_MODE_STA ) );
+    ESP_ERROR_CHECK( esp_wifi_set_config( ESP_IF_WIFI_STA, &wifi_config ) );
+    ESP_ERROR_CHECK( esp_wifi_start() );
+    ESP_ERROR_CHECK( esp_wifi_connect() );
 
-    xEventGroupWaitBits(s_connect_event_group, (GOT_IPV4_BIT | GOT_IPV6_BIT), true, true, portMAX_DELAY);
+    xEventGroupWaitBits( s_connect_event_group, ( GOT_IPV4_BIT | GOT_IPV6_BIT ), true, true, portMAX_DELAY );
 }
 
-#define SD_TAG "SD"
+#define SD_TAG    "SD"
 
 static void init_sdcard()
 {
-    ESP_LOGI(SD_TAG, "Initializing SD card");
+    ESP_LOGI( SD_TAG, "Initializing SD card" );
 
-#ifndef USE_SPI_MODE
-    ESP_LOGI(SD_TAG, "Using SDMMC peripheral");
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    #ifndef USE_SPI_MODE
+        ESP_LOGI( SD_TAG, "Using SDMMC peripheral" );
+        sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+        /* This initializes the slot without card detect (CD) and write protect (WP) signals. */
+        /* Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals. */
+        sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 
-    // To use 1-line SD mode, uncomment the following line:
-    // slot_config.width = 1;
+        /* To use 1-line SD mode, uncomment the following line: */
+        /* slot_config.width = 1; */
 
-    // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
-    // Internal pull-ups are not sufficient. However, enabling internal pull-ups
-    // does make a difference some boards, so we do that here.
-    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);   // CMD, needed in 4- and 1- line modes
-    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);    // D0, needed in 4- and 1-line modes
-    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
-    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
-    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);   // D3, needed in 4- and 1-line modes
+        /* GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups. */
+        /* Internal pull-ups are not sufficient. However, enabling internal pull-ups */
+        /* does make a difference some boards, so we do that here. */
+        gpio_set_pull_mode( 15, GPIO_PULLUP_ONLY ); /* CMD, needed in 4- and 1- line modes */
+        gpio_set_pull_mode( 2, GPIO_PULLUP_ONLY );  /* D0, needed in 4- and 1-line modes */
+        gpio_set_pull_mode( 4, GPIO_PULLUP_ONLY );  /* D1, needed in 4-line mode only */
+        gpio_set_pull_mode( 12, GPIO_PULLUP_ONLY ); /* D2, needed in 4-line mode only */
+        gpio_set_pull_mode( 13, GPIO_PULLUP_ONLY ); /* D3, needed in 4- and 1-line modes */
+    #else  /* ifndef USE_SPI_MODE */
+        ESP_LOGI( SD_TAG, "Using SPI peripheral" );
 
-#else
-    ESP_LOGI(SD_TAG, "Using SPI peripheral");
+        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+        sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
+        slot_config.gpio_miso = PIN_NUM_MISO;
+        slot_config.gpio_mosi = PIN_NUM_MOSI;
+        slot_config.gpio_sck = PIN_NUM_CLK;
+        slot_config.gpio_cs = PIN_NUM_CS;
+        /* This initializes the slot without card detect (CD) and write protect (WP) signals. */
+        /* Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals. */
+    #endif /*USE_SPI_MODE */
 
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-    slot_config.gpio_miso = PIN_NUM_MISO;
-    slot_config.gpio_mosi = PIN_NUM_MOSI;
-    slot_config.gpio_sck  = PIN_NUM_CLK;
-    slot_config.gpio_cs   = PIN_NUM_CS;
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-#endif //USE_SPI_MODE
-
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+    /* Options for mounting the filesystem. */
+    /* If format_if_mount_failed is set to true, SD card will be partitioned and */
+    /* formatted in case when mounting fails. */
+    esp_vfs_fat_sdmmc_mount_config_t mount_config =
+    {
         .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
+        .max_files              = 5,
+        .allocation_unit_size   = 16 * 1024
     };
 
-    // Use settings defined above to initialize SD card and mount FAT filesystem.
-    // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
-    // Please check its source code and implement error recovery when developing
-    // production applications.
-    sdmmc_card_t* card;
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+    /* Use settings defined above to initialize SD card and mount FAT filesystem. */
+    /* Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function. */
+    /* Please check its source code and implement error recovery when developing */
+    /* production applications. */
+    sdmmc_card_t * card;
+    esp_err_t ret = esp_vfs_fat_sdmmc_mount( "/sdcard", &host, &slot_config, &mount_config, &card );
 
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(SD_TAG, "Failed to mount filesystem. "
-                "If you want the card to be formatted, set format_if_mount_failed = true.");
-        } else {
-            ESP_LOGE(SD_TAG, "Failed to initialize the card (%s). "
-                "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
+    if( ret != ESP_OK )
+    {
+        if( ret == ESP_FAIL )
+        {
+            ESP_LOGE( SD_TAG, "Failed to mount filesystem. "
+                              "If you want the card to be formatted, set format_if_mount_failed = true." );
         }
+        else
+        {
+            ESP_LOGE( SD_TAG, "Failed to initialize the card (%s). "
+                              "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name( ret ) );
+        }
+
         return;
     }
 
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, card);
+    /* Card has been initialized, print its properties */
+    sdmmc_card_print_info( stdout, card );
 }
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
+static void IRAM_ATTR gpio_isr_handler( void * arg )
 {
     motionDetected = pdFALSE;
 }
 
-#define PIR_SENSOR_PORT 13
+#define PIR_SENSOR_PORT    13
 
 void register_gpio_negedge_event( void )
 {
     gpio_config_t io_conf;
 
     /* Setup GPIO to read input from the PIR sensor. */
-    io_conf.pin_bit_mask = (1ULL << PIR_SENSOR_PORT);
+    io_conf.pin_bit_mask = ( 1ULL << PIR_SENSOR_PORT );
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     io_conf.intr_type = GPIO_INTR_NEGEDGE;
-    gpio_config(&io_conf);
-    gpio_isr_handler_add(PIR_SENSOR_PORT, gpio_isr_handler, (void*) PIR_SENSOR_PORT);
+    gpio_config( &io_conf );
+    gpio_isr_handler_add( PIR_SENSOR_PORT, gpio_isr_handler, ( void * ) PIR_SENSOR_PORT );
 }
 
 void wakeUpFromMotionDetection( void )
 {
     /* Initialize the camera before configuring GPIO because
-       the camera installs the GPIO service first. */
-    if(init_camera() != ESP_OK)
+     * the camera installs the GPIO service first. */
+    if( init_camera() != ESP_OK )
     {
-        LogError(("Camera init failed"));
+        LogError( ( "Camera init failed" ) );
         return;
     }
+
     register_gpio_negedge_event();
     imageProcessLoop();
 }
@@ -702,41 +721,45 @@ void app_main( void )
     ESP_ERROR_CHECK( esp_netif_init() );
     ESP_ERROR_CHECK( esp_event_loop_create_default() );
 
-    switch (esp_sleep_get_wakeup_cause()) {
+    switch( esp_sleep_get_wakeup_cause() )
+    {
         case ESP_SLEEP_WAKEUP_EXT0:
-            LogInfo(("Detected motion."));
+            LogInfo( ( "Detected motion." ) );
             motionDetected = pdTRUE;
             wakeUpFromMotionDetection();
             break;
+
         case ESP_SLEEP_WAKEUP_TIMER:
-            // TODO: A timer could be used to send uploads that were previously saved to SD card.
+            /* TODO: A timer could be used to send uploads that were previously saved to SD card. */
             break;
+
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
-            LogInfo(("Just booted..."));
+            LogInfo( ( "Just booted..." ) );
             break;
     }
 
     /* Set GPIO13 to wake up the ESP when input is high */
-    rtc_gpio_init(PIR_SENSOR_PORT);
-    rtc_gpio_set_direction(PIR_SENSOR_PORT, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pulldown_en(PIR_SENSOR_PORT);
-    rtc_gpio_wakeup_enable(PIR_SENSOR_PORT, GPIO_INTR_HIGH_LEVEL);
-    rtc_gpio_isolate(GPIO_NUM_12);
-    esp_sleep_enable_ext0_wakeup(PIR_SENSOR_PORT, 1);
+    rtc_gpio_init( PIR_SENSOR_PORT );
+    rtc_gpio_set_direction( PIR_SENSOR_PORT, RTC_GPIO_MODE_INPUT_ONLY );
+    rtc_gpio_pulldown_en( PIR_SENSOR_PORT );
+    rtc_gpio_wakeup_enable( PIR_SENSOR_PORT, GPIO_INTR_HIGH_LEVEL );
+    rtc_gpio_isolate( GPIO_NUM_12 );
+    esp_sleep_enable_ext0_wakeup( PIR_SENSOR_PORT, 1 );
 
-    LogInfo(("Entering deep sleep."));
+    LogInfo( ( "Entering deep sleep." ) );
     esp_wifi_stop();
     esp_deep_sleep_start();
 }
 /*-----------------------------------------------------------*/
 
-typedef struct imageBuffer {
-    uint8_t* buf;
+typedef struct imageBuffer
+{
+    uint8_t * buf;
     size_t len;
 } imageFrame_t;
 
-#define NUM_IMAGE_FRAMES 10
+#define NUM_IMAGE_FRAMES    10
 
 static QueueHandle_t xImageFramesQueue = NULL;
 
@@ -747,6 +770,7 @@ static void publishImagesRoutine( void * pParameters )
     MQTTPublishInfo_t xMQTTPublishInfo = { 0 };
     MQTTStatus_t xMQTTStatus;
     BaseType_t xIsConnectionEstablished = pdFALSE;
+
     /* Upon return, pdPASS will indicate a successful demo execution.
     * pdFAIL will indicate some failures occurred during execution. The
     * user of this demo must check the logs for any failure codes. */
@@ -765,31 +789,32 @@ static void publishImagesRoutine( void * pParameters )
     connect_wifi();
 
     /* Set the entry time of the demo application. This entry time will be used
-    * to calculate relative time elapsed in the execution of the demo application,
-    * by the timer utility function that is provided to the MQTT library.
-    */
+     * to calculate relative time elapsed in the execution of the demo application,
+     * by the timer utility function that is provided to the MQTT library.
+     */
     ulGlobalEntryTimeMs = prvGetTimeMs();
 
     for( ; ; )
     {
         /********************************** Connect. *****************************************/
 
-        if(!xIsConnectionEstablished) {
+        if( !xIsConnectionEstablished )
+        {
             /* Attempt to establish TLS session with MQTT broker. If connection fails,
-            * retry after a timeout. Timeout value will be exponentially increased until
-            * the maximum number of attempts are reached or the maximum timeout value is reached.
-            * The function returns a failure status if the TLS over TCP connection cannot be established
-            * to the broker after the configured number of attempts. */
+             * retry after a timeout. Timeout value will be exponentially increased until
+             * the maximum number of attempts are reached or the maximum timeout value is reached.
+             * The function returns a failure status if the TLS over TCP connection cannot be established
+             * to the broker after the configured number of attempts. */
             xStatus = prvConnectToServerWithBackoffRetries( &xNetworkContext );
 
             if( xStatus == pdPASS )
             {
                 /* Set a flag indicating a TLS connection exists. This is done to
-                * disconnect if the loop exits before disconnection happens. */
+                 * disconnect if the loop exits before disconnection happens. */
                 xIsConnectionEstablished = pdTRUE;
 
                 /* Sends an MQTT Connect packet over the already established TLS connection,
-                * and waits for connection acknowledgment (CONNACK) packet. */
+                 * and waits for connection acknowledgment (CONNACK) packet. */
                 LogInfo( ( "Creating an MQTT connection to %s.", democonfigMQTT_BROKER_ENDPOINT ) );
                 xStatus = prvCreateMQTTConnectionWithBroker( &xMQTTContext, &xNetworkContext );
             }
@@ -806,18 +831,22 @@ static void publishImagesRoutine( void * pParameters )
         /* If there are no requests in the dispatch queue, try again. Peek first and consume only
          * when the image has been sent over the network.  */
         if( xQueuePeek( xImageFramesQueue,
-                           &imageFrame,
-                           portMAX_DELAY ) == pdFALSE )
+                        &imageFrame,
+                        portMAX_DELAY ) == pdFALSE )
         {
-            if( motionDetected ) {
-                /* The camera is still reading images. */ 
+            if( motionDetected )
+            {
+                /* The camera is still reading images. */
                 continue;
-            } else {
+            }
+            else
+            {
                 break;
             }
         }
 
-        if(xIsConnectionEstablished) {
+        if( xIsConnectionEstablished )
+        {
             LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", imageFrame.len, mqttexampleTOPIC ) );
             xMQTTPublishInfo.pPayload = imageFrame.buf;
             xMQTTPublishInfo.payloadLength = imageFrame.len;
@@ -835,19 +864,22 @@ static void publishImagesRoutine( void * pParameters )
                 }
             }
 
-            if(xStatus == pdFAIL) {
+            if( xStatus == pdFAIL )
+            {
                 esp_tls_conn_delete( xNetworkContext.pTlsContext );
                 xIsConnectionEstablished = pdFALSE;
             }
-        } else {
+        }
+        else
+        {
             /* TODO: Save to SD card whenever the connection is no longer established. */
         }
 
-        free(imageFrame.buf);
+        free( imageFrame.buf );
 
         configASSERT( xQueueReceive( xImageFramesQueue,
-                        &imageFrame,
-                        portMAX_DELAY ) == pdTRUE);
+                                     &imageFrame,
+                                     portMAX_DELAY ) == pdTRUE );
     }
 
     /* Terminating condition is when no more motion has been detected and
@@ -874,7 +906,7 @@ static void publishImagesRoutine( void * pParameters )
         esp_tls_conn_delete( xNetworkContext.pTlsContext );
     }
 
-    vTaskDelete(NULL);
+    vTaskDelete( NULL );
 }
 
 static TaskHandle_t xSendImagesTaskHandle = NULL;
@@ -886,20 +918,20 @@ static void imageProcessLoop()
     * user of this demo must check the logs for any failure codes. */
     BaseType_t xStatus = pdFAIL;
 
-    //init_sdcard();
+    /*init_sdcard(); */
 
     xImageFramesQueue = xQueueCreate( NUM_IMAGE_FRAMES, sizeof( imageFrame_t ) );
     xStatus = xTaskCreatePinnedToCore( publishImagesRoutine,
-                            "publishImagesRoutine",
-                            8192,
-                            NULL,
-                            3,
-                            &xSendImagesTaskHandle,
-                            0 );
+                                       "publishImagesRoutine",
+                                       8192,
+                                       NULL,
+                                       3,
+                                       &xSendImagesTaskHandle,
+                                       0 );
 
-    if(xStatus == pdFAIL)
+    if( xStatus == pdFAIL )
     {
-        LogError(("Failed to allocate publishImagesRoutine task."));
+        LogError( ( "Failed to allocate publishImagesRoutine task." ) );
         return;
     }
 
@@ -909,40 +941,46 @@ static void imageProcessLoop()
 
         /* Save jpeg frames to a buffer while motion is detected. If buffer space is fully consumed,
          * try to publish images over MQTT first until buffer space is available again (in a separate task). */
-        camera_fb_t *fb = esp_camera_fb_get();
+        camera_fb_t * fb = esp_camera_fb_get();
         imageFrame_t imageFrame;
-        uint8_t* buffer = NULL;
+        uint8_t * buffer = NULL;
 
-        if(fb)
+        if( fb )
         {
-            buffer = (uint8_t*)malloc(fb->len);
-            if(buffer == NULL) {
-                LogError(("Failed to malloc %d bytes for image frame.", fb->len));
-                vTaskDelay(pdMS_TO_TICKS(250U));
-            } else {
-                LogInfo(("Sending image of size %d bytes to queue.", fb->len));
+            buffer = ( uint8_t * ) malloc( fb->len );
+
+            if( buffer == NULL )
+            {
+                LogError( ( "Failed to malloc %d bytes for image frame.", fb->len ) );
+                vTaskDelay( pdMS_TO_TICKS( 250U ) );
+            }
+            else
+            {
+                LogInfo( ( "Sending image of size %d bytes to queue.", fb->len ) );
                 imageFrame.buf = buffer;
-                memcpy(imageFrame.buf, fb->buf, fb->len);
+                memcpy( imageFrame.buf, fb->buf, fb->len );
                 imageFrame.len = fb->len;
                 /* Return the frame for the camera library to reuse. */
-                esp_camera_fb_return(fb);
-                xQueueSendToBack(xImageFramesQueue, &imageFrame, pdMS_TO_TICKS(200));
+                esp_camera_fb_return( fb );
+                xQueueSendToBack( xImageFramesQueue, &imageFrame, pdMS_TO_TICKS( 200 ) );
             }
         }
         else
         {
-            LogError(("Failed to take picture."));
+            LogError( ( "Failed to take picture." ) );
         }
 
         /* I guess a Yeti isn't that fast :) */
-        vTaskDelay(pdMS_TO_TICKS( 250U ));
+        vTaskDelay( pdMS_TO_TICKS( 250U ) );
     }
 
     /* The ESP shouldn't go to sleep until all the images are sent or saved.
      * If the queue is empty, we don't expect it to fill up again. */
     imageFrame_t imageFrameFiller;
-    while(xQueuePeek(xImageFramesQueue, &imageFrameFiller, 0) == pdTRUE) {
-        vTaskDelay(pdMS_TO_TICKS( 1000U ));
+
+    while( xQueuePeek( xImageFramesQueue, &imageFrameFiller, 0 ) == pdTRUE )
+    {
+        vTaskDelay( pdMS_TO_TICKS( 1000U ) );
     }
 }
 /*-----------------------------------------------------------*/
@@ -976,8 +1014,8 @@ static BaseType_t prvBackoffForRetry( BackoffAlgorithmContext_t * pxRetryParams 
         xReturnStatus = pdPASS;
 
         LogInfo( ( "Retry attempt %u out of maximum retry attempts %u.",
-                    ( pxRetryParams->attemptsDone + 1 ),
-                    pxRetryParams->maxRetryAttempts ) );
+                   ( pxRetryParams->attemptsDone + 1 ),
+                   pxRetryParams->maxRetryAttempts ) );
     }
 
     return xReturnStatus;
@@ -991,17 +1029,18 @@ static BaseType_t prvConnectToServerWithBackoffRetries( NetworkContext_t * pxNet
     int xNetworkStatus = -1;
     BackoffAlgorithmContext_t xReconnectParams;
     BaseType_t xBackoffStatus = pdFALSE;
-    esp_tls_t *tls_conn;
+    esp_tls_t * tls_conn;
 
-    esp_tls_cfg_t tls_cfg = {
-            .cacert_buf  = ( const unsigned char * )democonfigROOT_CA_PEM,
-            .cacert_bytes = sizeof( democonfigROOT_CA_PEM ),
-            .clientcert_buf = ( const unsigned char * )keyCLIENT_CERTIFICATE_PEM,
-            .clientcert_bytes = sizeof( keyCLIENT_CERTIFICATE_PEM ),
-            .clientkey_buf = ( const unsigned char * )keyCLIENT_PRIVATE_KEY_PEM,
-            .clientkey_bytes = sizeof( keyCLIENT_PRIVATE_KEY_PEM ),
-            .timeout_ms = mqttexampleTRANSPORT_SEND_RECV_TIMEOUT_MS,
-        };
+    esp_tls_cfg_t tls_cfg =
+    {
+        .cacert_buf       = ( const unsigned char * ) democonfigROOT_CA_PEM,
+        .cacert_bytes     = sizeof( democonfigROOT_CA_PEM ),
+        .clientcert_buf   = ( const unsigned char * ) keyCLIENT_CERTIFICATE_PEM,
+        .clientcert_bytes = sizeof( keyCLIENT_CERTIFICATE_PEM ),
+        .clientkey_buf    = ( const unsigned char * ) keyCLIENT_PRIVATE_KEY_PEM,
+        .clientkey_bytes  = sizeof( keyCLIENT_PRIVATE_KEY_PEM ),
+        .timeout_ms       = mqttexampleTRANSPORT_SEND_RECV_TIMEOUT_MS,
+    };
 
     /* Initialize reconnect attempts and interval. */
     BackoffAlgorithm_InitializeParams( &xReconnectParams,
@@ -1010,6 +1049,7 @@ static BaseType_t prvConnectToServerWithBackoffRetries( NetworkContext_t * pxNet
                                        RETRY_MAX_ATTEMPTS );
 
     tls_conn = esp_tls_init();
+
     /* Attempt to connect to MQTT broker. If connection fails, retry after
      * a timeout. Timeout value will exponentially increase till maximum
      * attempts are reached.
@@ -1043,7 +1083,6 @@ static BaseType_t prvConnectToServerWithBackoffRetries( NetworkContext_t * pxNet
         {
             pxNetworkContext->pTlsContext = tls_conn;
         }
-        
     } while( ( xNetworkStatus != 1 ) && ( xBackoffStatus == pdPASS ) );
 
     return xStatus;
@@ -1187,6 +1226,7 @@ static void prvMQTTProcessResponse( MQTTPacketInfo_t * pxIncomingPacket,
                                xTopicFilterContext[ ulTopicCount ].xSubAckStatus ) );
                 }
             }
+
             break;
 
         case MQTT_PACKET_TYPE_UNSUBACK:
@@ -1228,7 +1268,7 @@ static void prvMQTTProcessIncomingPublish( MQTTPublishInfo_t * pxPublishInfo )
                    pxPublishInfo->topicNameLength,
                    pxPublishInfo->pTopicName,
                    pxPublishInfo->payloadLength,
-                   ( const char * )pxPublishInfo->pPayload ) );
+                   ( const char * ) pxPublishInfo->pPayload ) );
     }
     else
     {
