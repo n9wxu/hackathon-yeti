@@ -59,8 +59,12 @@
 /* Kernel includes. */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 
+#include "esp_sleep.h"
 #include "esp_wifi.h"
+#include "esp_wifi_default.h"
+#include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -68,6 +72,8 @@
 #include "protocol_examples_common.h"
 #include "esp_netif.h"
 #include "esp_camera.h"
+
+#include "driver/rtc_io.h"
 
 /* MQTT library includes. */
 #include "core_mqtt.h"
@@ -240,6 +246,9 @@ static const char tlsATS1_ROOT_CERTIFICATE_PEM[] =
  */
 #define MILLISECONDS_PER_TICK                             ( MILLISECONDS_PER_SECOND / configTICK_RATE_HZ )
 
+#define GOT_IPV4_BIT BIT(0)
+#define GOT_IPV6_BIT BIT(1)
+
 /*-----------------------------------------------------------*/
 
 /**
@@ -299,17 +308,6 @@ static BaseType_t prvCreateMQTTConnectionWithBroker( MQTTContext_t * pxMQTTConte
 static void prvUpdateSubAckStatus( MQTTPacketInfo_t * pxPacketInfo );
 
 /**
- * @brief Subscribes to the topic as specified in mqttexampleTOPIC at the top of
- * this file. In the case of a Subscribe ACK failure, then subscription is
- * retried using an exponential backoff strategy with jitter.
- *
- * @param[in] pxMQTTContext MQTT context pointer.
- *
- * @return pdFAIL on failure; pdPASS on successful SUBSCRIBE request.
- */
-static BaseType_t prvMQTTSubscribeWithBackoffRetries( MQTTContext_t * pxMQTTContext );
-
-/**
  * @brief Publishes a message mqttexampleMESSAGE on mqttexampleTOPIC topic.
  *
  * @param[in] pxMQTTContext MQTT context pointer.
@@ -318,16 +316,6 @@ static BaseType_t prvMQTTSubscribeWithBackoffRetries( MQTTContext_t * pxMQTTCont
  */
 static BaseType_t prvMQTTPublishToTopic( MQTTContext_t * pxMQTTContext,
                                          const MQTTPublishInfo_t * pxMQTTPublishInfo );
-
-/**
- * @brief Unsubscribes from the previously subscribed topic as specified
- * in mqttexampleTOPIC.
- *
- * @param[in] pxMQTTContext MQTT context pointer.
- *
- * @return pdFAIL on failure; pdPASS on successful UNSUBSCRIBE request.
- */
-static BaseType_t prvMQTTUnsubscribeFromTopic( MQTTContext_t * pxMQTTContext );
 
 /**
  * @brief The timer query function provided to the MQTT context.
@@ -506,10 +494,10 @@ static camera_config_t camera_config = {
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
 };
 
-
 static esp_err_t init_camera()
 {
     //initialize the camera
+
     esp_err_t err = esp_camera_init(&camera_config);
     if (err != ESP_OK)
     {
@@ -520,24 +508,114 @@ static esp_err_t init_camera()
     return ESP_OK;
 }
 
+static wifi_config_t wifi_config = {
+    .sta = {
+        .ssid = CONFIG_EXAMPLE_WIFI_SSID,
+        .password = CONFIG_EXAMPLE_WIFI_PASSWORD,
+    },
+};
+
+#define WIFI_TAG "wifi"
+
+static void on_wifi_disconnect(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data)
+{
+    ESP_LOGI(WIFI_TAG, "Wi-Fi disconnected, trying to reconnect...");
+    esp_err_t err = esp_wifi_connect();
+    if (err == ESP_ERR_WIFI_NOT_STARTED) {
+        return;
+    }
+    ESP_ERROR_CHECK(err);
+}
+
+static void on_wifi_connect(void *esp_netif, esp_event_base_t event_base,
+                            int32_t event_id, void *event_data)
+{
+    esp_netif_create_ip6_linklocal(esp_netif);
+}
+
+static EventGroupHandle_t s_connect_event_group;
+
+static void on_got_ip(void *arg, esp_event_base_t event_base,
+                      int32_t event_id, void *event_data)
+{
+    ESP_LOGI(WIFI_TAG, "Got IP event!");
+    xEventGroupSetBits(s_connect_event_group, GOT_IPV4_BIT);
+}
+
+static void on_got_ipv6(void *arg, esp_event_base_t event_base,
+                        int32_t event_id, void *event_data)
+{
+    ESP_LOGI(WIFI_TAG, "Got IPv6 event!");
+    xEventGroupSetBits(s_connect_event_group, GOT_IPV6_BIT);
+}
+
+static void connect_wifi()
+{
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_WIFI_STA();
+
+    esp_netif_t *netif = esp_netif_new(&netif_config);
+    assert(netif);
+
+    esp_netif_attach_wifi_station(netif);
+    esp_wifi_set_default_wifi_sta_handlers();
+
+    s_connect_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &on_wifi_disconnect, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_got_ip, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &on_wifi_connect, netif));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_GOT_IP6, &on_got_ipv6, NULL));
+
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    ESP_LOGI("wifi", "Connecting to %s...", wifi_config.sta.ssid);
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_connect());
+
+    xEventGroupWaitBits(s_connect_event_group, (GOT_IPV4_BIT | GOT_IPV6_BIT), true, true, portMAX_DELAY);
+}
+
+#define PIR_SENSOR_PORT 13
+#define DEEP_SLEEP_SECONDS 60
+
 void app_main( void )
 {
+    gpio_config_t io_conf;
+
     ESP_ERROR_CHECK( nvs_flash_init() );
     ESP_ERROR_CHECK( esp_netif_init() );
     ESP_ERROR_CHECK( esp_event_loop_create_default() );
 
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-    ESP_ERROR_CHECK( example_connect() );
+    // ESP_ERROR_CHECK( esp_event_loop_create_default() );
+    switch (esp_sleep_get_wakeup_cause()) {
+        case ESP_SLEEP_WAKEUP_EXT0:
+            printf("Detected motion.");
+            connect_wifi();
+            prvMqttDemoTask(NULL);
+            break;
+        case ESP_SLEEP_WAKEUP_TIMER:
+            // A timer could be used to send uploads.
+            break;
+        case ESP_SLEEP_WAKEUP_UNDEFINED:
+        default:
+            printf("Just booted...\n");
+            break;
+    }
 
-    xTaskCreate( prvMqttDemoTask,
-                 "mqtt_demo_task",
-                 8192,
-                 NULL,
-                 5,
-                 NULL);
+    rtc_gpio_init(PIR_SENSOR_PORT);
+    rtc_gpio_set_direction(PIR_SENSOR_PORT, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pulldown_en(PIR_SENSOR_PORT);
+    rtc_gpio_wakeup_enable(PIR_SENSOR_PORT, GPIO_INTR_HIGH_LEVEL);
+    rtc_gpio_isolate(GPIO_NUM_12);
+    esp_sleep_enable_ext0_wakeup(PIR_SENSOR_PORT, 1);
+
+    LogInfo(("Entering deep sleep."));
+    esp_wifi_stop();
+    esp_deep_sleep_start();
 }
 /*-----------------------------------------------------------*/
 
@@ -550,11 +628,26 @@ static void prvMqttDemoTask( void * pvParameters )
     MQTTPublishInfo_t xMQTTPublishInfo = { 0 };
     MQTTStatus_t xMQTTStatus;
     BaseType_t xIsConnectionEstablished = pdFALSE;
-
     /* Upon return, pdPASS will indicate a successful demo execution.
     * pdFAIL will indicate some failures occurred during execution. The
     * user of this demo must check the logs for any failure codes. */
     BaseType_t xDemoStatus = pdFAIL;
+
+    /* Initialize the camera before configuring GPIO because the camera installs the GPIO service first. */
+    if(init_camera() != ESP_OK)
+    {
+        xDemoStatus = pdFAIL;
+        LogError(("Camera init failed"));
+    }
+
+    /* Setup GPIO to read input from the PIR sensor. */
+    /*io_conf.intr_type = GPIO_INTR_ANYEDGE;
+    io_conf.pin_bit_mask = GPIO_SEL_13;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    gpio_config(&io_conf);*/
 
     /* Remove compiler warnings about unused parameters. */
     ( void ) pvParameters;
@@ -594,12 +687,6 @@ static void prvMqttDemoTask( void * pvParameters )
     xMQTTPublishInfo.pTopicName = mqttexampleTOPIC;
     xMQTTPublishInfo.topicNameLength = ( uint16_t ) strlen( mqttexampleTOPIC );
 
-    if(init_camera() != ESP_OK)
-    {
-        xDemoStatus = pdFAIL;
-        LogError(("Camera init failed"));
-    }
-
     /* Publish messages with QoS1, send and process Keep alive messages. */
     for( ulPublishCount = 0;
          ( ( xDemoStatus == pdPASS ) && ( ulPublishCount < ulMaxPublishCount ) );
@@ -615,7 +702,7 @@ static void prvMqttDemoTask( void * pvParameters )
         }
         else
         {
-            LogInfo( ("no picture taken"));
+            LogInfo(("No picture taken"));
         }
 
         xDemoStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
@@ -634,25 +721,6 @@ static void prvMqttDemoTask( void * pvParameters )
         /* Leave Connection Idle for some time. */
         LogInfo( ( "Keeping Connection Idle..." ) );
         vTaskDelay( mqttexampleDELAY_BETWEEN_PUBLISHES_TICKS );
-    }
-
-    /************************ Unsubscribe from the topic. **************************/
-
-    if( xDemoStatus == pdPASS )
-    {
-        LogInfo( ( "Unsubscribe from the MQTT topic %s.", mqttexampleTOPIC ) );
-        xDemoStatus = prvMQTTUnsubscribeFromTopic( &xMQTTContext );
-    }
-
-    if( xDemoStatus == pdPASS )
-    {
-        /* Process incoming UNSUBACK packet from the broker. */
-        xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_UNSUBACK );
-
-        if( xMQTTStatus != MQTTSuccess )
-        {
-            xDemoStatus = pdFAIL;
-        }
     }
 
     /**************************** Disconnect. ******************************/
@@ -679,18 +747,6 @@ static void prvMqttDemoTask( void * pvParameters )
     {
         xTopicFilterContext[ ulTopicCount ].xSubAckStatus = MQTTSubAckFailure;
     }
-
-    if( xDemoStatus == pdPASS )
-    {
-        LogInfo( ( "Demo completed successfully." ) );
-    }
-    else
-    {
-        LogInfo( ( "Demo failed!" ) );
-    }
-
-    LogInfo( ( "-------------------------------------------" ) );
-    vTaskDelete( NULL );
 }
 /*-----------------------------------------------------------*/
 
@@ -909,45 +965,6 @@ static BaseType_t prvMQTTPublishToTopic( MQTTContext_t * pxMQTTContext,
 }
 /*-----------------------------------------------------------*/
 
-static BaseType_t prvMQTTUnsubscribeFromTopic( MQTTContext_t * pxMQTTContext )
-{
-    MQTTStatus_t xResult;
-    MQTTSubscribeInfo_t xMQTTSubscription[ mqttexampleTOPIC_COUNT ];
-    BaseType_t xStatus = pdPASS;
-
-    /* Some fields not used by this demo so start with everything at 0. */
-    ( void ) memset( ( void * ) &xMQTTSubscription, 0x00, sizeof( xMQTTSubscription ) );
-
-    /* Get a unique packet id. */
-    usSubscribePacketIdentifier = MQTT_GetPacketId( pxMQTTContext );
-
-    /* Subscribe to the mqttexampleTOPIC topic filter. This example subscribes to
-     * only one topic and uses QoS1. */
-    xMQTTSubscription[ 0 ].qos = MQTTQoS1;
-    xMQTTSubscription[ 0 ].pTopicFilter = mqttexampleTOPIC;
-    xMQTTSubscription[ 0 ].topicFilterLength = ( uint16_t ) strlen( mqttexampleTOPIC );
-
-    /* Get next unique packet identifier. */
-    usUnsubscribePacketIdentifier = MQTT_GetPacketId( pxMQTTContext );
-
-    /* Send UNSUBSCRIBE packet. */
-    xResult = MQTT_Unsubscribe( pxMQTTContext,
-                                xMQTTSubscription,
-                                sizeof( xMQTTSubscription ) / sizeof( MQTTSubscribeInfo_t ),
-                                usUnsubscribePacketIdentifier );
-
-    if( xResult != MQTTSuccess )
-    {
-        xStatus = pdFAIL;
-        LogError( ( "Failed to send UNSUBSCRIBE request to broker: TopicFilter=%s, Error=%s",
-                    mqttexampleTOPIC,
-                    MQTT_Status_strerror( xResult ) ) );
-    }
-
-    return xStatus;
-}
-/*-----------------------------------------------------------*/
-
 static void prvMQTTProcessResponse( MQTTPacketInfo_t * pxIncomingPacket,
                                     uint16_t usPacketId )
 {
@@ -1083,7 +1100,6 @@ static uint32_t prvGetTimeMs( void )
 static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType )
 {
-    uint8_t ucCount = 0U;
     MQTTStatus_t xMQTTStatus = MQTTSuccess;
 
     /* Reset the packet type received. */
