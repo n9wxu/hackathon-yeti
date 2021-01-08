@@ -68,10 +68,23 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_tls.h"
 #include "nvs_flash.h"
 #include "protocol_examples_common.h"
 #include "esp_netif.h"
 #include "esp_camera.h"
+
+#include <sys/unistd.h>
+#include <sys/stat.h>
+#include "esp_vfs_fat.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include "sdmmc_cmd.h"
+#include "sdkconfig.h"
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+    #include "driver/sdmmc_host.h"
+#endif
 
 #include "driver/rtc_io.h"
 
@@ -249,6 +262,21 @@ static const char tlsATS1_ROOT_CERTIFICATE_PEM[] =
 #define GOT_IPV4_BIT BIT(0)
 #define GOT_IPV6_BIT BIT(1)
 
+#define MOUNT_POINT "/sdcard"
+#define SPI_DMA_CHAN    1
+
+#define USE_SPI_MODE 1
+
+#ifdef USE_SPI_MODE
+    // Pin mapping when using SPI mode.
+    // With this mapping, SD card can be used both in SPI and 1-line SD mode.
+    // Note that a pull-up on CS line is required in SD mode.
+    #define PIN_NUM_MISO 2
+    #define PIN_NUM_MOSI 15
+    #define PIN_NUM_CLK  14
+    #define PIN_NUM_CS   13
+#endif //USE_SPI_MODE
+
 /*-----------------------------------------------------------*/
 
 /**
@@ -391,19 +419,6 @@ static uint32_t ulGlobalEntryTimeMs;
 static uint16_t usPublishPacketIdentifier;
 
 /**
- * @brief Packet Identifier generated when Subscribe request was sent to the broker;
- * it is used to match received Subscribe ACK to the transmitted Subscribe packet.
- */
-static uint16_t usSubscribePacketIdentifier;
-
-/**
- * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
- * it is used to match received Unsubscribe response to the transmitted Unsubscribe
- * request.
- */
-static uint16_t usUnsubscribePacketIdentifier;
-
-/**
  * @brief MQTT packet type received from the MQTT broker.
  *
  * @note Only on receiving incoming PUBLISH, SUBACK, and UNSUBACK, this
@@ -446,6 +461,8 @@ static MQTTFixedBuffer_t xBuffer =
 static UBaseType_t motionDetected = pdFALSE;
 
 /*-----------------------------------------------------------*/
+
+#define EEPROM_SIZE 1
 
 #define CAM_PIN_PWDN 32
 #define CAM_PIN_RESET -1 //software reset will be performed
@@ -522,12 +539,7 @@ static wifi_config_t wifi_config = {
 static void on_wifi_disconnect(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
-    ESP_LOGI(WIFI_TAG, "Wi-Fi disconnected, trying to reconnect...");
-    esp_err_t err = esp_wifi_connect();
-    if (err == ESP_ERR_WIFI_NOT_STARTED) {
-        return;
-    }
-    ESP_ERROR_CHECK(err);
+    ESP_LOGI(WIFI_TAG, "Wi-Fi disconnected...");
 }
 
 static void on_wifi_connect(void *esp_netif, esp_event_base_t event_base,
@@ -581,8 +593,109 @@ static void connect_wifi()
     xEventGroupWaitBits(s_connect_event_group, (GOT_IPV4_BIT | GOT_IPV6_BIT), true, true, portMAX_DELAY);
 }
 
+#define SD_TAG "SD"
+
+static void init_sdcard()
+{
+    ESP_LOGI(SD_TAG, "Initializing SD card");
+
+#ifndef USE_SPI_MODE
+    ESP_LOGI(SD_TAG, "Using SDMMC peripheral");
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+
+    // This initializes the slot without card detect (CD) and write protect (WP) signals.
+    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+
+    // To use 1-line SD mode, uncomment the following line:
+    // slot_config.width = 1;
+
+    // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
+    // Internal pull-ups are not sufficient. However, enabling internal pull-ups
+    // does make a difference some boards, so we do that here.
+    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);   // CMD, needed in 4- and 1- line modes
+    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);    // D0, needed in 4- and 1-line modes
+    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
+    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
+    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);   // D3, needed in 4- and 1-line modes
+
+#else
+    ESP_LOGI(SD_TAG, "Using SPI peripheral");
+
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
+    slot_config.gpio_miso = PIN_NUM_MISO;
+    slot_config.gpio_mosi = PIN_NUM_MOSI;
+    slot_config.gpio_sck  = PIN_NUM_CLK;
+    slot_config.gpio_cs   = PIN_NUM_CS;
+    // This initializes the slot without card detect (CD) and write protect (WP) signals.
+    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+#endif //USE_SPI_MODE
+
+    // Options for mounting the filesystem.
+    // If format_if_mount_failed is set to true, SD card will be partitioned and
+    // formatted in case when mounting fails.
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+
+    // Use settings defined above to initialize SD card and mount FAT filesystem.
+    // Note: esp_vfs_fat_sdmmc_mount is an all-in-one convenience function.
+    // Please check its source code and implement error recovery when developing
+    // production applications.
+    sdmmc_card_t* card;
+    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(SD_TAG, "Failed to mount filesystem. "
+                "If you want the card to be formatted, set format_if_mount_failed = true.");
+        } else {
+            ESP_LOGE(SD_TAG, "Failed to initialize the card (%s). "
+                "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
+        }
+        return;
+    }
+
+    // Card has been initialized, print its properties
+    sdmmc_card_print_info(stdout, card);
+}
+
+static void IRAM_ATTR gpio_isr_handler(void* arg)
+{
+    motionDetected = pdFALSE;
+}
+
 #define PIR_SENSOR_PORT 13
-#define DEEP_SLEEP_SECONDS 60
+
+void register_gpio_negedge_event( void )
+{
+    gpio_config_t io_conf;
+
+    /* Setup GPIO to read input from the PIR sensor. */
+    io_conf.pin_bit_mask = (1ULL << PIR_SENSOR_PORT);
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    gpio_config(&io_conf);
+    gpio_isr_handler_add(PIR_SENSOR_PORT, gpio_isr_handler, (void*) PIR_SENSOR_PORT);
+}
+
+void wakeUpFromMotionDetection( void )
+{
+    /* Initialize the camera before configuring GPIO because
+       the camera installs the GPIO service first. */
+    if(init_camera() != ESP_OK)
+    {
+        LogError(("Camera init failed"));
+        return;
+    }
+    register_gpio_negedge_event();
+    connect_wifi();
+    imageProcessLoop();
+}
 
 void app_main( void )
 {
@@ -594,11 +707,10 @@ void app_main( void )
         case ESP_SLEEP_WAKEUP_EXT0:
             LogInfo(("Detected motion."));
             motionDetected = pdTRUE;
-            connect_wifi();
-            imageProcessLoop();
+            wakeUpFromMotionDetection();
             break;
         case ESP_SLEEP_WAKEUP_TIMER:
-            // A timer could be used to send uploads.
+            // TODO: A timer could be used to send uploads that were previously saved to SD card.
             break;
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
@@ -606,6 +718,7 @@ void app_main( void )
             break;
     }
 
+    /* Set GPIO13 to wake up the ESP when input is high */
     rtc_gpio_init(PIR_SENSOR_PORT);
     rtc_gpio_set_direction(PIR_SENSOR_PORT, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_en(PIR_SENSOR_PORT);
@@ -619,14 +732,17 @@ void app_main( void )
 }
 /*-----------------------------------------------------------*/
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
-{
-    motionDetected = pdFALSE;
-}
+typedef struct imageBuffer {
+    uint8_t* buf;
+    size_t len;
+} imageFrame_t;
 
-static void imageProcessLoop()
+#define NUM_IMAGE_FRAMES 1
+
+static QueueHandle_t xImageFramesQueue = NULL;
+
+static void publishImagesRoutine( void * pParameters )
 {
-    uint32_t ulTopicCount = 0U;
     NetworkContext_t xNetworkContext = { 0 };
     MQTTContext_t xMQTTContext = { 0 };
     MQTTPublishInfo_t xMQTTPublishInfo = { 0 };
@@ -636,23 +752,10 @@ static void imageProcessLoop()
     * pdFAIL will indicate some failures occurred during execution. The
     * user of this demo must check the logs for any failure codes. */
     BaseType_t xStatus = pdFAIL;
-    gpio_config_t io_conf;
 
-    /* Initialize the camera before configuring GPIO because the camera installs the GPIO service first. */
-    if(init_camera() != ESP_OK)
-    {
-        xStatus = pdFAIL;
-        LogError(("Camera init failed"));
-    }
+    ( void ) pParameters;
 
-    /* Setup GPIO to read input from the PIR sensor. */
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.pin_bit_mask = (1ULL << PIR_SENSOR_PORT);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;
-    gpio_config(&io_conf);
-    gpio_isr_handler_add(PIR_SENSOR_PORT, gpio_isr_handler, (void*) PIR_SENSOR_PORT);
+    imageFrame_t imageFrame;
 
     /* QoS1 should be sufficient because we don't care if subscribers of the topic receive the image. */
     xMQTTPublishInfo.qos = MQTTQoS1;
@@ -660,14 +763,8 @@ static void imageProcessLoop()
     xMQTTPublishInfo.pTopicName = mqttexampleTOPIC;
     xMQTTPublishInfo.topicNameLength = ( uint16_t ) strlen( mqttexampleTOPIC );
 
-    while( motionDetected )
+    for( ; ; )
     {
-        /* Set the entry time of the demo application. This entry time will be used
-        * to calculate relative time elapsed in the execution of the demo application,
-        * by the timer utility function that is provided to the MQTT library.
-        */
-        ulGlobalEntryTimeMs = prvGetTimeMs();
-
         /********************************** Connect. *****************************************/
         if(!xIsConnectionEstablished) {
             /* Attempt to establish TLS session with MQTT broker. If connection fails,
@@ -691,53 +788,64 @@ static void imageProcessLoop()
 
             if( xStatus == pdFAIL )
             {
+                esp_tls_conn_delete( xNetworkContext.pTlsContext );
                 xIsConnectionEstablished = pdFALSE;
             }
         }
 
-        /************************ Save and publish jpeg frames. ******************************/
+        /************************* Send image over MQTT. ***************************************/
+        /* If there are no requests in the dispatch queue, try again. */
+        if( xQueueReceive( xImageFramesQueue,
+                           &imageFrame,
+                           portMAX_DELAY ) == pdFALSE )
+        {
+            if( motionDetected ) {
+                /* The camera is still reading images. */ 
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        /* Set the entry time of the demo application. This entry time will be used
+        * to calculate relative time elapsed in the execution of the demo application,
+        * by the timer utility function that is provided to the MQTT library.
+        */
+        ulGlobalEntryTimeMs = prvGetTimeMs();
 
         if(xIsConnectionEstablished) {
-            /* Save jpeg frames to a buffer while motion is detected. If buffer space is fully consumed,
-            * try to publish images over MQTT first until buffer space is available again. */
-            camera_fb_t *fb = esp_camera_fb_get();
+            LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", imageFrame.len, mqttexampleTOPIC ) );
+            xMQTTPublishInfo.pPayload = imageFrame.buf;
+            xMQTTPublishInfo.payloadLength = imageFrame.len;
 
-            if(fb)
+            xStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
+
+            if( xStatus == pdPASS )
             {
-                LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", fb->len, mqttexampleTOPIC ) );
-                xMQTTPublishInfo.pPayload = fb->buf;
-                xMQTTPublishInfo.payloadLength = fb->len;
+                /* The PUBACK for the outgoing PUBLISH will be received here. */
+                xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
 
-                xStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
-
-                if( xStatus == pdPASS )
+                if( xMQTTStatus != MQTTSuccess )
                 {
-                    /* The PUBACK for the outgoing PUBLISH will be received here. */
-                    xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
-
-                    if( xMQTTStatus != MQTTSuccess )
-                    {
-                        xStatus = pdFAIL;
-                    }
-                }
-
-                if( xStatus == pdFAIL )
-                {
-                    xIsConnectionEstablished = pdFALSE;
+                    xStatus = pdFAIL;
                 }
             }
-            else
-            {
-                LogError(("Failed to take picture."));
+
+            if(xStatus == pdFAIL) {
+                esp_tls_conn_delete( xNetworkContext.pTlsContext );
+                xIsConnectionEstablished = pdFALSE;
             }
-
-            /* Return the frame for the camera library to reuse. */
-            esp_camera_fb_return(fb);
-
-            /* I guess a Yeti isn't that fast :) */
-            vTaskDelay(pdMS_TO_TICKS( 250U ));
+        } else {
+            /* TODO: Save to SD card whenever the connection is no longer established. */
         }
+
+        free(imageFrame.buf);
     }
+
+    /* Terminating condition is when no more motion has been detected and
+     * all images have been sent. Although, it is possible that sends take
+     * a very long time, then the Yeti comes while the sends are happening.
+     * This assumes that sends happen very quickly (for now). */
 
     /**************************** Disconnect. ******************************/
 
@@ -758,10 +866,66 @@ static void imageProcessLoop()
         esp_tls_conn_delete( xNetworkContext.pTlsContext );
     }
 
-    /* Reset SUBACK status for each topic filter after completion of subscription request cycle. */
-    for( ulTopicCount = 0; ulTopicCount < mqttexampleTOPIC_COUNT; ulTopicCount++ )
+    vTaskDelete(NULL);
+}
+
+static TaskHandle_t xSendImagesTaskHandle = NULL;
+
+static void imageProcessLoop()
+{
+    /* Upon return, pdPASS will indicate a successful demo execution.
+    * pdFAIL will indicate some failures occurred during execution. The
+    * user of this demo must check the logs for any failure codes. */
+    BaseType_t xStatus = pdFAIL;
+
+    //init_sdcard();
+
+    xImageFramesQueue = xQueueCreate( NUM_IMAGE_FRAMES, sizeof( imageFrame_t ) );
+    xStatus = xTaskCreatePinnedToCore( publishImagesRoutine,
+                            "publishImagesRoutine",
+                            8192,
+                            NULL,
+                            3,
+                            &xSendImagesTaskHandle,
+                            0 );
+
+    if(xStatus == pdFAIL)
     {
-        xTopicFilterContext[ ulTopicCount ].xSubAckStatus = MQTTSubAckFailure;
+        LogError(("Failed to allocate publishImagesRoutine task."));
+        return;
+    }
+
+    while( motionDetected )
+    {
+        /************************ Save and queue jpeg frames. ******************************/
+
+        /* Save jpeg frames to a buffer while motion is detected. If buffer space is fully consumed,
+         * try to publish images over MQTT first until buffer space is available again (in a separate task). */
+        camera_fb_t *fb = esp_camera_fb_get();
+        imageFrame_t imageFrame;
+        uint8_t* buffer = NULL;
+
+        if(fb)
+        {
+            buffer = (uint8_t*)malloc(fb->len);
+            if(buffer == NULL) {
+                vTaskDelay(pdMS_TO_TICKS(250U));
+            } else {
+                imageFrame.buf = buffer;
+                memcpy(imageFrame.buf, fb->buf, fb->len);
+                imageFrame.len = fb->len;
+                /* Return the frame for the camera library to reuse. */
+                esp_camera_fb_return(fb);
+                xQueueSendToBack(xImageFramesQueue, &imageFrame, pdMS_TO_TICKS(200));
+            }
+        }
+        else
+        {
+            LogError(("Failed to take picture."));
+        }
+
+        /* I guess a Yeti isn't that fast :) */
+        vTaskDelay(pdMS_TO_TICKS( 250U ));
     }
 }
 /*-----------------------------------------------------------*/
@@ -775,12 +939,6 @@ static BaseType_t prvBackoffForRetry( BackoffAlgorithmContext_t * pxRetryParams 
     /**
      * To calculate the backoff period for the next retry attempt, we will
      * generate a random number to provide to the backoffAlgorithm library.
-     *
-     * Note: The PKCS11 module is used to generate the random number as it allows access
-     * to a True Random Number Generator (TRNG) if the vendor platform supports it.
-     * It is recommended to use a random number generator seeded with a device-specific
-     * entropy source so that probability of collisions from devices in connection retries
-     * is mitigated.
      */
     uint32_t ulRandomNum = 0;
 
@@ -856,7 +1014,7 @@ static BaseType_t prvConnectToServerWithBackoffRetries( NetworkContext_t * pxNet
 
         if( xNetworkStatus != 1 )
         {
-            LogWarn( ( "Connection to the broker failed. Attempting connection retry after backoff delay." ) );
+            LogWarn( ( "Connection to the broker failed with error %d. Attempting connection retry after backoff delay.", xNetworkStatus ) );
 
             /* As the connection attempt failed, we will retry the connection after an
              * exponential backoff with jitter delay. */
