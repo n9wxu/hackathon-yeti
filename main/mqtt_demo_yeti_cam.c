@@ -947,7 +947,7 @@ static void imageProcessLoop()
 
         if( fb )
         {
-            buffer = ( uint8_t * ) malloc( fb->len );
+            buffer = ( uint8_t * ) heap_caps_malloc(fb->len, MALLOC_CAP_SPIRAM);
 
             if( buffer == NULL )
             {
@@ -971,7 +971,7 @@ static void imageProcessLoop()
         }
 
         /* I guess a Yeti isn't that fast :) */
-        vTaskDelay( pdMS_TO_TICKS( 250U ) );
+        vTaskDelay( pdMS_TO_TICKS( 500U ) );
     }
 
     /* The ESP shouldn't go to sleep until all the images are sent or saved.
