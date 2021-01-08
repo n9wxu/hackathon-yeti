@@ -1,0 +1,3 @@
+build
+main/aws_credential.h
+main/aws_clientcredential_keys.h
