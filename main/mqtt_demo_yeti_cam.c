@@ -368,7 +368,7 @@ static void prvEventCallback( MQTTContext_t * pxMQTTContext,
 static MQTTStatus_t prvWaitForPacket( MQTTContext_t * pxMQTTContext,
                                       uint16_t usPacketType );
 
-static void prvMqttDemoTask( void * pvParameters );
+static void imageProcessLoop();
 /*-----------------------------------------------------------*/
 
 /**
@@ -442,6 +442,8 @@ static MQTTFixedBuffer_t xBuffer =
     ucSharedBuffer,
     democonfigNETWORK_BUFFER_SIZE
 };
+
+static UBaseType_t motionDetected = pdFALSE;
 
 /*-----------------------------------------------------------*/
 
@@ -584,25 +586,23 @@ static void connect_wifi()
 
 void app_main( void )
 {
-    gpio_config_t io_conf;
-
     ESP_ERROR_CHECK( nvs_flash_init() );
     ESP_ERROR_CHECK( esp_netif_init() );
     ESP_ERROR_CHECK( esp_event_loop_create_default() );
 
-    // ESP_ERROR_CHECK( esp_event_loop_create_default() );
     switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT0:
-            printf("Detected motion.");
+            LogInfo(("Detected motion."));
+            motionDetected = pdTRUE;
             connect_wifi();
-            prvMqttDemoTask(NULL);
+            imageProcessLoop();
             break;
         case ESP_SLEEP_WAKEUP_TIMER:
             // A timer could be used to send uploads.
             break;
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
-            printf("Just booted...\n");
+            LogInfo(("Just booted..."));
             break;
     }
 
@@ -619,10 +619,14 @@ void app_main( void )
 }
 /*-----------------------------------------------------------*/
 
-static void prvMqttDemoTask( void * pvParameters )
+static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
-    uint32_t ulPublishCount = 0U, ulTopicCount = 0U;
-    const uint32_t ulMaxPublishCount = 5UL;
+    motionDetected = pdFALSE;
+}
+
+static void imageProcessLoop()
+{
+    uint32_t ulTopicCount = 0U;
     NetworkContext_t xNetworkContext = { 0 };
     MQTTContext_t xMQTTContext = { 0 };
     MQTTPublishInfo_t xMQTTPublishInfo = { 0 };
@@ -631,55 +635,24 @@ static void prvMqttDemoTask( void * pvParameters )
     /* Upon return, pdPASS will indicate a successful demo execution.
     * pdFAIL will indicate some failures occurred during execution. The
     * user of this demo must check the logs for any failure codes. */
-    BaseType_t xDemoStatus = pdFAIL;
+    BaseType_t xStatus = pdFAIL;
+    gpio_config_t io_conf;
 
     /* Initialize the camera before configuring GPIO because the camera installs the GPIO service first. */
     if(init_camera() != ESP_OK)
     {
-        xDemoStatus = pdFAIL;
+        xStatus = pdFAIL;
         LogError(("Camera init failed"));
     }
 
     /* Setup GPIO to read input from the PIR sensor. */
-    /*io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.pin_bit_mask = GPIO_SEL_13;
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;
+    io_conf.pin_bit_mask = (1ULL << PIR_SENSOR_PORT);
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
-    io_conf.intr_type = GPIO_INTR_POSEDGE;
-    gpio_config(&io_conf);*/
-
-    /* Remove compiler warnings about unused parameters. */
-    ( void ) pvParameters;
-
-    /* Set the entry time of the demo application. This entry time will be used
-     * to calculate relative time elapsed in the execution of the demo application,
-     * by the timer utility function that is provided to the MQTT library.
-     */
-    ulGlobalEntryTimeMs = prvGetTimeMs();
-
-    /****************************** Connect. ******************************/
-
-    /* Attempt to establish TLS session with MQTT broker. If connection fails,
-     * retry after a timeout. Timeout value will be exponentially increased until
-     * the maximum number of attempts are reached or the maximum timeout value is reached.
-     * The function returns a failure status if the TLS over TCP connection cannot be established
-     * to the broker after the configured number of attempts. */
-    xDemoStatus = prvConnectToServerWithBackoffRetries( &xNetworkContext );
-
-    if( xDemoStatus == pdPASS )
-    {
-        /* Set a flag indicating a TLS connection exists. This is done to
-         * disconnect if the loop exits before disconnection happens. */
-        xIsConnectionEstablished = pdTRUE;
-
-        /* Sends an MQTT Connect packet over the already established TLS connection,
-         * and waits for connection acknowledgment (CONNACK) packet. */
-        LogInfo( ( "Creating an MQTT connection to %s.", democonfigMQTT_BROKER_ENDPOINT ) );
-        xDemoStatus = prvCreateMQTTConnectionWithBroker( &xMQTTContext, &xNetworkContext );
-    }
-
-   /**************************** Publish jpeg frames loop. ******************************/
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    gpio_config(&io_conf);
+    gpio_isr_handler_add(PIR_SENSOR_PORT, gpio_isr_handler, (void*) PIR_SENSOR_PORT);
 
     /* QoS1 should be sufficient because we don't care if subscribers of the topic receive the image. */
     xMQTTPublishInfo.qos = MQTTQoS1;
@@ -687,45 +660,88 @@ static void prvMqttDemoTask( void * pvParameters )
     xMQTTPublishInfo.pTopicName = mqttexampleTOPIC;
     xMQTTPublishInfo.topicNameLength = ( uint16_t ) strlen( mqttexampleTOPIC );
 
-    /* Publish messages with QoS1, send and process Keep alive messages. */
-    for( ulPublishCount = 0;
-         ( ( xDemoStatus == pdPASS ) && ( ulPublishCount < ulMaxPublishCount ) );
-         ulPublishCount++ )
+    while( motionDetected )
     {
-        camera_fb_t *pic = esp_camera_fb_get();
+        /* Set the entry time of the demo application. This entry time will be used
+        * to calculate relative time elapsed in the execution of the demo application,
+        * by the timer utility function that is provided to the MQTT library.
+        */
+        ulGlobalEntryTimeMs = prvGetTimeMs();
 
-        if(pic)
-        {
-            LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", pic->len, mqttexampleTOPIC ) );
-            xMQTTPublishInfo.pPayload = pic->buf;
-            xMQTTPublishInfo.payloadLength = pic->len;
-        }
-        else
-        {
-            LogInfo(("No picture taken"));
-        }
+        /********************************** Connect. *****************************************/
+        if(!xIsConnectionEstablished) {
+            /* Attempt to establish TLS session with MQTT broker. If connection fails,
+            * retry after a timeout. Timeout value will be exponentially increased until
+            * the maximum number of attempts are reached or the maximum timeout value is reached.
+            * The function returns a failure status if the TLS over TCP connection cannot be established
+            * to the broker after the configured number of attempts. */
+            xStatus = prvConnectToServerWithBackoffRetries( &xNetworkContext );
 
-        xDemoStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
-
-        if( xDemoStatus == pdPASS )
-        {
-            /* The PUBACK for the outgoing PUBLISH will be received here. */
-            xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
-
-            if( xMQTTStatus != MQTTSuccess )
+            if( xStatus == pdPASS )
             {
-                xDemoStatus = pdFAIL;
+                /* Set a flag indicating a TLS connection exists. This is done to
+                * disconnect if the loop exits before disconnection happens. */
+                xIsConnectionEstablished = pdTRUE;
+
+                /* Sends an MQTT Connect packet over the already established TLS connection,
+                * and waits for connection acknowledgment (CONNACK) packet. */
+                LogInfo( ( "Creating an MQTT connection to %s.", democonfigMQTT_BROKER_ENDPOINT ) );
+                xStatus = prvCreateMQTTConnectionWithBroker( &xMQTTContext, &xNetworkContext );
+            }
+
+            if( xStatus == pdFAIL )
+            {
+                xIsConnectionEstablished = pdFALSE;
             }
         }
 
-        /* Leave Connection Idle for some time. */
-        LogInfo( ( "Keeping Connection Idle..." ) );
-        vTaskDelay( mqttexampleDELAY_BETWEEN_PUBLISHES_TICKS );
+        /************************ Save and publish jpeg frames. ******************************/
+
+        if(xIsConnectionEstablished) {
+            /* Save jpeg frames to a buffer while motion is detected. If buffer space is fully consumed,
+            * try to publish images over MQTT first until buffer space is available again. */
+            camera_fb_t *fb = esp_camera_fb_get();
+
+            if(fb)
+            {
+                LogInfo( ( "Publish %d byte jpeg image to the MQTT topic %s.", fb->len, mqttexampleTOPIC ) );
+                xMQTTPublishInfo.pPayload = fb->buf;
+                xMQTTPublishInfo.payloadLength = fb->len;
+
+                xStatus = prvMQTTPublishToTopic( &xMQTTContext, &xMQTTPublishInfo );
+
+                if( xStatus == pdPASS )
+                {
+                    /* The PUBACK for the outgoing PUBLISH will be received here. */
+                    xMQTTStatus = prvWaitForPacket( &xMQTTContext, MQTT_PACKET_TYPE_PUBLISH );
+
+                    if( xMQTTStatus != MQTTSuccess )
+                    {
+                        xStatus = pdFAIL;
+                    }
+                }
+
+                if( xStatus == pdFAIL )
+                {
+                    xIsConnectionEstablished = pdFALSE;
+                }
+            }
+            else
+            {
+                LogError(("Failed to take picture."));
+            }
+
+            /* Return the frame for the camera library to reuse. */
+            esp_camera_fb_return(fb);
+
+            /* I guess a Yeti isn't that fast :) */
+            vTaskDelay(pdMS_TO_TICKS( 250U ));
+        }
     }
 
     /**************************** Disconnect. ******************************/
 
-    if( xDemoStatus == pdPASS )
+    if( xStatus == pdPASS )
     {
         /* Send an MQTT Disconnect packet over the already connected TLS over TCP connection.
          * There is no corresponding response for the disconnect packet. After sending
@@ -974,8 +990,6 @@ static void prvMQTTProcessResponse( MQTTPacketInfo_t * pxIncomingPacket,
     {
         case MQTT_PACKET_TYPE_PUBACK:
             LogInfo( ( "PUBACK received for packet Id %u.", usPacketId ) );
-            /* Make sure ACK packet identifier matches with Request packet identifier. */
-            configASSERT( usPublishPacketIdentifier == usPacketId );
             break;
 
         case MQTT_PACKET_TYPE_SUBACK:
@@ -998,9 +1012,6 @@ static void prvMQTTProcessResponse( MQTTPacketInfo_t * pxIncomingPacket,
                                xTopicFilterContext[ ulTopicCount ].xSubAckStatus ) );
                 }
             }
-
-            /* Make sure ACK packet identifier matches with Request packet identifier. */
-            configASSERT( usSubscribePacketIdentifier == usPacketId );
             break;
 
         case MQTT_PACKET_TYPE_UNSUBACK:
@@ -1008,14 +1019,10 @@ static void prvMQTTProcessResponse( MQTTPacketInfo_t * pxIncomingPacket,
 
             /* Update the packet type received to UNSUBACK. */
             usPacketTypeReceived = MQTT_PACKET_TYPE_UNSUBACK;
-
-            /* Make sure ACK packet identifier matches with Request packet identifier. */
-            configASSERT( usUnsubscribePacketIdentifier == usPacketId );
             break;
 
         case MQTT_PACKET_TYPE_PINGRESP:
             LogInfo( ( "Ping Response successfully received." ) );
-
             break;
 
         /* Any other packet type is invalid. */
